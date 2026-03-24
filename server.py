@@ -1,8 +1,13 @@
 """
 MCP Server — 세 가지 도구를 제공하는 MCP 서버
-  1. Drawing    — 직접 임포트 (drawing.py)
-  2. Experiment — Python TCP 소켓 → experiment_server.py (포트 9877)
-  3. Game       — JS TCP 소켓   → game_server.js       (포트 9876)
+
+연결 방식이 도구마다 다르다:
+  1. Drawing    — 같은 프로세스에서 직접 임포트 (drawing.py)
+  2. Experiment — 별도 Python 프로세스에 TCP 소켓으로 통신 (포트 9877)
+  3. Game       — 별도 Node.js 프로세스에 TCP 소켓으로 통신 (포트 9876)
+
+Claude는 각 함수의 docstring을 읽고 어떤 도구를 호출할지 판단한다.
+따라서 사용자가 자연어로 말해도 ("게임 시작해줘") 알맞은 함수가 호출된다.
 """
 
 import json
@@ -17,7 +22,9 @@ import drawing
 
 mcp = FastMCP("The Mogiyoon Mcp")
 
+# server.py 파일이 있는 디렉토리 — 하위 스크립트 경로 계산에 사용
 BASE   = os.path.dirname(__file__)
+# MCP 서버를 실행한 Python 인터프리터 경로 (서브프로세스 실행 시 동일 환경 보장)
 PYTHON = sys.executable
 NODE   = "node"
 
@@ -26,9 +33,14 @@ NODE   = "node"
 # ─────────────────────────────────────────────
 
 def _send(port: int, cmd: dict, timeout: float = 5.0) -> str:
-    """TCP 소켓으로 JSON 명령을 전송하고 응답 메시지를 반환합니다."""
+    """TCP 소켓으로 JSON 명령을 전송하고 응답 메시지를 반환한다.
+
+    프로토콜: JSON 한 줄 + 개행(\n)으로 메시지 경계를 구분한다.
+    서버도 동일하게 JSON + \n 으로 응답하므로 \n이 오면 수신 완료로 판단한다.
+    """
     try:
         with socket.create_connection(("localhost", port), timeout=timeout) as s:
+            # 명령을 JSON 직렬화 후 \n을 붙여 전송 (메시지 경계 구분자)
             s.sendall((json.dumps(cmd, ensure_ascii=False) + "\n").encode())
             data = b""
             while True:
@@ -36,11 +48,13 @@ def _send(port: int, cmd: dict, timeout: float = 5.0) -> str:
                 if not chunk:
                     break
                 data += chunk
+                # \n이 수신되면 응답 한 줄이 완성된 것
                 if b"\n" in data:
                     break
         resp = json.loads(data.strip())
         return resp.get("message", "")
     except ConnectionRefusedError:
+        # 서버가 꺼져 있을 때 어떤 서버인지 안내
         srv = "game_server.js" if port == 9876 else "experiment_server.py"
         return f"서버가 실행 중이 아닙니다. servers_start()를 먼저 실행하세요. ({srv})"
     except Exception as e:
@@ -50,6 +64,8 @@ def _send(port: int, cmd: dict, timeout: float = 5.0) -> str:
 # ═══════════════════════════════════════════════
 # 1. Drawing Tools  (직접 임포트)
 # ═══════════════════════════════════════════════
+# drawing.py를 같은 프로세스에서 임포트해 함수를 직접 호출한다.
+# 소켓 오버헤드 없이 가장 단순한 연결 방식.
 
 @mcp.tool()
 def drawing_create_canvas(width: int, height: int) -> str:
@@ -101,6 +117,8 @@ def drawing_list_chars() -> str:
 # ═══════════════════════════════════════════════
 # 2. Experiment Tools  (Python 소켓 → 포트 9877)
 # ═══════════════════════════════════════════════
+# experiment_server.py가 별도 프로세스로 실행 중이어야 한다.
+# 모든 호출은 _send(9877, ...) 를 통해 JSON으로 전달된다.
 
 @mcp.tool()
 def exp_list_components(category: str = "") -> str:
@@ -148,6 +166,8 @@ def exp_history() -> str:
 # ═══════════════════════════════════════════════
 # 3. Game Tools  (JS 소켓 → 포트 9876)
 # ═══════════════════════════════════════════════
+# game_server.js(Node.js)가 별도 프로세스로 실행 중이어야 한다.
+# 게임 로직은 JS에서 처리되고, 결과는 WebSocket으로 브라우저에 push된다.
 
 @mcp.tool()
 def game_start() -> str:
@@ -196,7 +216,7 @@ def servers_start() -> str:
     """게임 서버(Node.js)와 실험 서버(Python)를 실행하고 브라우저를 엽니다."""
     msgs = []
 
-    # game_server.js
+    # game_server.js: Node.js로 실행, stdout/stderr는 버림 (백그라운드 데몬처럼 동작)
     try:
         subprocess.Popen(
             [NODE, os.path.join(BASE, "game_server.js")],
@@ -207,7 +227,7 @@ def servers_start() -> str:
     except Exception as e:
         msgs.append(f"게임 서버 실패: {e}")
 
-    # experiment_server.py
+    # experiment_server.py: MCP와 동일한 Python 인터프리터로 실행
     try:
         subprocess.Popen(
             [PYTHON, os.path.join(BASE, "experiment_server.py")],
@@ -218,7 +238,7 @@ def servers_start() -> str:
     except Exception as e:
         msgs.append(f"실험 서버 실패: {e}")
 
-    # 브라우저 열기 (macOS)
+    # macOS 전용: open 명령으로 기본 브라우저에서 game.html을 서빙하는 URL을 연다
     try:
         subprocess.Popen(["open", "http://localhost:3000"])
         msgs.append("브라우저 열기: http://localhost:3000")
@@ -246,4 +266,5 @@ def open_viewer() -> str:
 # ═══════════════════════════════════════════════
 
 if __name__ == "__main__":
+    # stdio 모드로 실행 — Claude Desktop이 이 프로세스의 stdin/stdout으로 MCP 통신
     mcp.run()
