@@ -15,7 +15,7 @@ from mcp.server.fastmcp import FastMCP
 
 import drawing
 
-mcp = FastMCP("Three Tools Server")
+mcp = FastMCP("The Mogiyoon Mcp")
 
 BASE   = os.path.dirname(__file__)
 PYTHON = sys.executable

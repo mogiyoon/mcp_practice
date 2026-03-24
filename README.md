@@ -1,4 +1,4 @@
-# MCP Three Tools
+# the-mogiyoon-mcp
 
 Claude에게 자연어로 명령하면 게임 캐릭터가 움직이고, 캔버스에 그림이 그려지고, 실험이 실행되는 MCP 서버입니다.
 
@@ -58,7 +58,7 @@ brew install python-tk@3.12
 ```json
 {
   "mcpServers": {
-    "three-tools": {
+    "the-mogiyoon-mcp": {
       "command": "/opt/homebrew/opt/python@3.12/Frameworks/Python.framework/Versions/3.12/bin/python3.12",
       "args": ["/절대경로/mcp_server/server.py"]
     }
