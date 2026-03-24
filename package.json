@@ -1,0 +1,9 @@
+{
+  "name": "mcp-game-server",
+  "version": "1.0.0",
+  "description": "JS game server for MCP three-tools",
+  "main": "game_server.js",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>Dungeon MCP</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Header */
+    #header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      background: #161b22;
+      border-bottom: 1px solid #21262d;
+      flex-shrink: 0;
+    }
+    #status-dot { width: 8px; height: 8px; border-radius: 50%; background: #444; flex-shrink: 0; }
+    #status-dot.on  { background: #58d68d; box-shadow: 0 0 6px #58d68d; }
+    #status-dot.dead { background: #e74c3c; }
+    #header h1 { font-size: 13px; color: #58d68d; letter-spacing: 1px; }
+    #header-info { font-size: 11px; color: #8b949e; margin-left: auto; }
+
+    /* Main */
+    #main {
+      display: flex;
+      flex: 1;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* Canvas */
+    #canvas-wrap {
+      flex-shrink: 0;
+      padding: 12px;
+    }
+    canvas {
+      display: block;
+      border: 1px solid #21262d;
+      border-radius: 4px;
+    }
+
+    /* Sidebar */
+    #sidebar {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 12px 12px 0;
+      overflow-y: auto;
+      min-width: 180px;
+    }
+    .panel {
+      background: #161b22;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .panel-title {
+      font-size: 10px;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 8px;
+    }
+    #hp-wrap { height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; }
+    #hp-fill { height: 100%; width: 100%; background: #58d68d; transition: width .3s, background .3s; border-radius: 3px; }
+    #hp-label, #atk-label { font-size: 11px; color: #c9d1d9; margin-top: 5px; }
+    #atk-label { color: #e74c3c; margin-top: 3px; }
+
+    #inv-list { list-style: none; }
+    #inv-list li { font-size: 11px; color: #85c1e9; padding: 2px 0; }
+    #inv-list li::before { content: '✦ '; }
+    .empty { color: #555 !important; }
+    .empty::before { content: '' !important; }
+
+    #enemy-list { font-size: 11px; }
+    .enemy-row { display: flex; justify-content: space-between; padding: 2px 0; }
+    .enemy-row .ename { color: #c9d1d9; }
+    .enemy-row .ehp   { color: #e74c3c; }
+    .enemy-row.boss .ename { color: #f0e68c; }
+    .enemy-row.boss .ehp   { color: #f0e68c; }
+
+    /* Log */
+    #log-panel {
+      flex-shrink: 0;
+      background: #161b22;
+      border-top: 1px solid #21262d;
+      padding: 8px 14px;
+      height: 110px;
+      overflow-y: auto;
+    }
+    #log-list { list-style: none; }
+    #log-list li {
+      font-size: 11px;
+      padding: 1px 0 1px 8px;
+      border-left: 2px solid #21262d;
+      color: #8b949e;
+      line-height: 1.5;
+    }
+    #log-list li.latest {
+      border-left-color: #58d68d;
+      color: #fff;
+    }
+    #log-list li.warn { border-left-color: #e74c3c; color: #e74c3c; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <div id="status-dot"></div>
+  <h1>⚔ DUNGEON MCP</h1>
+  <span id="header-info">Claude에게 game_start()를 입력하세요</span>
+</div>
+
+<div id="main">
+  <div id="canvas-wrap">
+    <canvas id="c" width="640" height="384"></canvas>
+  </div>
+
+  <div id="sidebar">
+    <div class="panel">
+      <div class="panel-title">플레이어</div>
+      <div id="hp-wrap"><div id="hp-fill"></div></div>
+      <div id="hp-label">HP: — / —</div>
+      <div id="atk-label">ATK: —  |  Turn: 0</div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">인벤토리</div>
+      <ul id="inv-list"><li class="empty">없음</li></ul>
+    </div>
+    <div class="panel" style="flex:1">
+      <div class="panel-title">적 현황</div>
+      <div id="enemy-list"><span style="color:#555">-</span></div>
+    </div>
+  </div>
+</div>
+
+<div id="log-panel">
+  <ul id="log-list"></ul>
+</div>
+
+<script>
+// ── 상수 ───────────────────────────────────────────────
+const CELL = 32;
+const W = 20, H = 12;
+
+const COL = {
+  bg:    '#0d1117',
+  wall:  '#1c2128',
+  wallB: '#2d333b',
+  floor: '#0d1117',
+  dot:   '#1a1f2a',
+  exit:  '#a29bfe',
+  exitD: '#1a1828',
+  player:'#58d68d',
+  playerD:'#0a2318',
+  enemy: '#e74c3c',
+  enemyD:'#2a0a0a',
+  boss:  '#f0e68c',
+  bossD: '#2a2000',
+  item:  '#85c1e9',
+  itemD: '#0a1a2a',
+};
+
+// ── Canvas ─────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+drawIdle();
+
+// ── WebSocket ──────────────────────────────────────────
+function connect() {
+  const ws = new WebSocket('ws://localhost:8765');
+  ws.onopen  = () => setDot('on');
+  ws.onclose = () => { setDot(''); setTimeout(connect, 2000); };
+  ws.onmessage = e => render(JSON.parse(e.data));
+}
+connect();
+
+// ── Render ─────────────────────────────────────────────
+function render(s) {
+  drawMap(s);
+  updateSidebar(s);
+  updateLog(s);
+  updateHeader(s);
+}
+
+function drawMap(s) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++)
+      drawTile(x, y, s.map[y][x]);
+
+  // 아이템
+  for (const i of s.items)
+    if (!i.collected) drawSprite(i.x, i.y, '✦', COL.item, COL.itemD);
+
+  // 출구
+  const [ex, ey] = s.exitPos;
+  const blocked  = s.enemies.filter(e => e.hp > 0).length > 0;
+  drawSprite(ex, ey, '▶', blocked ? '#555' : COL.exit, COL.exitD);
+
+  // 적 (살아있는 것만)
+  for (const e of s.enemies) {
+    if (e.hp <= 0) continue;
+    const c = e.isBoss ? COL.boss : COL.enemy;
+    const d = e.isBoss ? COL.bossD : COL.enemyD;
+    drawSprite(e.x, e.y, e.isBoss ? '♔' : '♟', c, d);
+    drawHpBar(e.x, e.y, e.hp, e.maxHp, c);
+  }
+
+  // 플레이어
+  if (s.player)
+    drawSprite(s.player.x, s.player.y, '@', COL.player, COL.playerD);
+}
+
+function drawTile(x, y, type) {
+  const px = x * CELL, py = y * CELL;
+  if (type === 'wall') {
+    ctx.fillStyle = COL.wallB;
+    ctx.fillRect(px, py, CELL, CELL);
+    ctx.fillStyle = COL.wall;
+    ctx.fillRect(px+1, py+1, CELL-2, CELL-2);
+  } else {
+    ctx.fillStyle = COL.floor;
+    ctx.fillRect(px, py, CELL, CELL);
+    ctx.fillStyle = COL.dot;
+    ctx.fillRect(px + CELL/2 - 1, py + CELL/2 - 1, 2, 2);
+  }
+}
+
+function drawSprite(x, y, icon, fg, bg) {
+  const px = x * CELL + 3, py = y * CELL + 3;
+  const s  = CELL - 6;
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(px, py, s, s, 5);
+  else ctx.rect(px, py, s, s);
+  ctx.fill();
+  ctx.fillStyle = fg;
+  ctx.font = `bold ${Math.floor(CELL * 0.54)}px monospace`;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(icon, x * CELL + CELL / 2, y * CELL + CELL / 2);
+}
+
+function drawHpBar(x, y, hp, maxHp, color) {
+  const px = x * CELL + 3, py = y * CELL + CELL - 7;
+  const w  = CELL - 6;
+  ctx.fillStyle = '#111';
+  ctx.fillRect(px, py, w, 3);
+  ctx.fillStyle = color;
+  ctx.fillRect(px, py, Math.round(w * hp / maxHp), 3);
+}
+
+function drawIdle() {
+  ctx.fillStyle = COL.bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#30363d';
+  ctx.font = '13px monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('game_start()  를 입력하면 게임이 시작됩니다', canvas.width/2, canvas.height/2);
+}
+
+// ── Sidebar ────────────────────────────────────────────
+function updateSidebar(s) {
+  const p = s.player;
+  if (!p) return;
+
+  const pct = p.hp / p.maxHp * 100;
+  const fill = document.getElementById('hp-fill');
+  fill.style.width = pct + '%';
+  fill.style.background = pct > 50 ? '#58d68d' : pct > 25 ? '#f0e68c' : '#e74c3c';
+
+  document.getElementById('hp-label').textContent  = `HP: ${p.hp} / ${p.maxHp}`;
+  document.getElementById('atk-label').textContent = `ATK: ${p.atk}  |  Turn: ${s.turn}`;
+
+  const invEl = document.getElementById('inv-list');
+  invEl.innerHTML = s.inventory.length
+    ? s.inventory.map(i => `<li>${i.name}</li>`).join('')
+    : '<li class="empty">없음</li>';
+
+  const al = s.enemies.filter(e => e.hp > 0);
+  const eEl = document.getElementById('enemy-list');
+  eEl.innerHTML = al.length
+    ? al.map(e => `
+        <div class="enemy-row${e.isBoss?' boss':''}">
+          <span class="ename">${e.isBoss?'♔':'♟'} ${e.name}</span>
+          <span class="ehp">${e.hp}/${e.maxHp}</span>
+        </div>`).join('')
+    : '<span style="color:#58d68d">모두 처치!</span>';
+}
+
+// ── Log ────────────────────────────────────────────────
+function updateLog(s) {
+  const ul = document.getElementById('log-list');
+  ul.innerHTML = [...s.log].reverse().map((msg, i) => {
+    const cls = i === 0 ? 'latest' : msg.includes('오버') || msg.includes('공격') ? 'warn' : '';
+    return `<li class="${cls}">${msg}</li>`;
+  }).join('');
+  document.getElementById('log-panel').scrollTop = 0;
+}
+
+// ── Header ─────────────────────────────────────────────
+function updateHeader(s) {
+  const info = document.getElementById('header-info');
+  if (s.gameOver)   info.textContent = '💀 게임 오버 — game_start()로 다시 시작';
+  else if (s.running) {
+    const al = s.enemies.filter(e => e.hp > 0).length;
+    info.textContent = `Lv ${s.level}  •  Turn ${s.turn}  •  적 ${al}마리`;
+  }
+  setDot(s.gameOver ? 'dead' : s.running ? 'on' : '');
+}
+
+function setDot(cls) {
+  const d = document.getElementById('status-dot');
+  d.className = cls ? `status-dot ${cls}` : 'status-dot';
+  // id는 그대로 두고 class만 변경
+  d.id = 'status-dot';
+  d.classList.remove('on', 'dead');
+  if (cls) d.classList.add(cls);
+}
+</script>
+</body>
+</html>
