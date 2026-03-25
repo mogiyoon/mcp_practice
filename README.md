@@ -30,8 +30,6 @@ server.py
 |------|------|
 | Python | 3.10 이상 |
 | Node.js | 16 이상 |
-| mcp | `pip3 install mcp` |
-| tkinter | `brew install python-tk@3.12` (macOS Homebrew) |
 | ws | `npm install` |
 
 ---
@@ -42,11 +40,20 @@ server.py
 git clone <repo-url>
 cd mcp_server
 
-pip3 install mcp
-npm install
+# 가상환경 생성 및 활성화
+python3 -m venv .venv
+source .venv/bin/activate
 
-# macOS Homebrew Python만 해당
-brew install python-tk@3.12
+# Python 의존성 설치
+pip install -r requirements.txt
+
+# Node.js 의존성 설치
+npm install
+```
+
+tkinter가 필요한 경우 (macOS Homebrew Python):
+```bash
+brew install python-tk
 ```
 
 ---
@@ -55,20 +62,24 @@ brew install python-tk@3.12
 
 `~/Library/Application Support/Claude/claude_desktop_config.json`에 추가합니다.
 
+시스템 Python 경로는 버전마다 다르므로, **프로젝트 venv를 사용하면 경로가 항상 고정**됩니다.
+
 ```json
 {
   "mcpServers": {
     "the-mogiyoon-mcp": {
-      "command": "/opt/homebrew/opt/python@3.12/Frameworks/Python.framework/Versions/3.12/bin/python3.12",
+      "command": "/절대경로/mcp_server/.venv/bin/python",
       "args": ["/절대경로/mcp_server/server.py"]
     }
   }
 }
 ```
 
-Python 경로 확인:
+절대경로 확인:
 ```bash
-which python3.12
+cd mcp_server
+echo "$(pwd)/.venv/bin/python"
+echo "$(pwd)/server.py"
 ```
 
 설정 후 **Claude Desktop 재시작** 필수.
