@@ -91,7 +91,7 @@ echo "$(pwd)/server.py"
 Claude Desktop에서 자연어로 말하면 됩니다.
 
 ```
-서버 시작해줘
+서버 시작해줘 (더 모기윤 시작해줘)
 ```
 
 게임 서버(Node.js), 실험 서버(Python), 브라우저(`http://localhost:3000`)가 한 번에 실행됩니다.
